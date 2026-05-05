@@ -1,0 +1,54 @@
+templates:
+  - id: export_certificate_v1
+    priority: 1
+
+    match:
+      anchor_text: ["輸出予定届出証明書", "輸出抹消仮登録証明書"]
+
+    page:
+      dpi: 300
+
+    anchors:
+      chassis_label:
+        text: "車台番号"
+        expected: {x: 0.62, y: 0.18}
+        search_region: {x: 0.60, y: 0.12, w: 0.25, h: 0.10}
+
+      issue_date_label:
+        text: "登録年月日"
+        expected: {x: 0.07, y: 0.15}
+        search_region: {x: 0.05, y: 0.10, w: 0.25, h: 0.10}
+
+      expiration_date_label:
+        text: "輸出予定日"
+        expected: {x: 0.07, y: 0.55}
+        search_region: {x: 0.05, y: 0.50, w: 0.30, h: 0.12}
+
+    fields:
+      chassis_no:
+        anchor: chassis_label
+        offset: {dx: -0.01, dy: 0.02}
+        size: {w: 0.20, h: 0.07}
+
+      issue_date:
+        anchor: issue_date_label
+        offset: {dx: 0.00, dy: 0.02}
+        size: {w: 0.25, h: 0.05}
+
+      expiration_date:
+        anchor: expiration_date_label
+        offset: {dx: 0.00, dy: 0.02}
+        size: {w: 0.25, h: 0.05}
+
+  - id: fallback_template
+    priority: 99
+
+    fields:
+      chassis_no:
+        region: {x: 0.65, y: 0.18, w: 0.30, h: 0.05}
+
+      issue_date:
+        region: {x: 0.08, y: 0.15, w: 0.35, h: 0.06}
+
+      expiration_date:
+        region: {x: 0.08, y: 0.52, w: 0.35, h: 0.06}

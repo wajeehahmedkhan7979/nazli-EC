@@ -1,0 +1,5 @@
+templates:
+  - id: export_certificate_v1
+    path: configs/templates/export_certificate_v1.yaml
+    enabled: true
+    priority: 1
