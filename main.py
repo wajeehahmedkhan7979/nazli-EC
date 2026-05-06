@@ -7,5 +7,5 @@ if __name__ == "__main__":
         host="0.0.0.0",
         port=8080,
         reload=False,
-        workers=1,   # Keep at 1 — Tesseract is not process-safe with forked workers
+        workers=1, # Keep at 1 for PaddleOCR stability
     )
