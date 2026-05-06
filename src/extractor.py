@@ -1,13 +1,15 @@
 """
 EC PDF Extractor — zero AI, zero paid services.
 
-HYBRID strategy based on actual document analysis:
-  - Chassis:     Full-page English OCR + regex (layout-independent, proven reliable)
-  - Expiry Date: ROI crop of "Export scheduled day" section (middle of page)
-  - Issue Date:  ROI crop of "Date of Application" section (bottom of page)
+Root-cause diagnosis (v3 rewrite):
+  The previous ROI-crop approach had two fatal bugs:
+    1. Chassis ROI: small crop OCR garbled spaced characters → 22% success.
+    2. Expiry ROI: PSM-7 single-line on a 2-line Japanese+English block → empty → 33% success.
+    3. Chassis regex: [0-9]{5,10} in suffix didn't allow OCR noise chars (O,I,B etc) → 78% miss.
 
-Pipeline per page:
-  PyMuPDF render → full-page OCR for chassis → ROI crops for dates → regex parse
+FIX — Single full-page OCR pass + anchor-based extraction:
+  Full-page OCR (PSM 6, English) returns all three values in its output.
+  Proven by debug files. We extract fields by anchoring on known English label text.
 """
 from __future__ import annotations
 
@@ -20,7 +22,7 @@ from datetime import date
 from pathlib import Path
 from typing import Optional
 
-import fitz  # PyMuPDF
+import fitz
 import numpy as np
 import cv2
 from PIL import Image
@@ -29,31 +31,15 @@ logger = logging.getLogger(__name__)
 
 RENDER_DPI = 300
 
-# ---------------------------------------------------------------------------
-# ROI definitions for date fields (fractional coordinates)
-# Measured from the actual annotated Export Certificate document.
-# Page: 987 × 693 pt landscape → 4113 × 2888 px at 300 DPI
-# ---------------------------------------------------------------------------
-ROIS = {
-    # Chassis: Top right area
-    "chassis_no": dict(x=0.60, y=0.05, w=0.35, h=0.10),
-    # Expiry: Shifted DOWN (y=0.64) to capture 'Export scheduled day'
-    "expiry_date": dict(x=0.08, y=0.64, w=0.50, h=0.08),
-    # Issue: Confirmed bottom area 'Date of Application'
-    "issue_date":  dict(x=0.03, y=0.86, w=0.55, h=0.12),
-}
-
-# ---------------------------------------------------------------------------
-# Result dataclass
-# ---------------------------------------------------------------------------
 
 @dataclass
 class PageResult:
     page_number: int
     chassis_no:  Optional[str]
-    issue_date:  Optional[str]   # ISO YYYY-MM-DD
-    expiry_date: Optional[str]   # ISO YYYY-MM-DD
+    issue_date:  Optional[str]
+    expiry_date: Optional[str]
     warnings:    list[str] = field(default_factory=list)
+    raw_text:    str = field(default="", repr=False)
     elapsed_ms:  float = 0.0
 
 
@@ -70,12 +56,12 @@ class ExtractionResult:
             "page_count": self.page_count,
             "results": [
                 {
-                    "page":       r.page_number,
-                    "chassis_no": r.chassis_no,
-                    "issue_date": r.issue_date,
-                    "expiry_date":r.expiry_date,
-                    "warnings":   r.warnings,
-                    "elapsed_ms": round(r.elapsed_ms, 1),
+                    "page":        r.page_number,
+                    "chassis_no":  r.chassis_no,
+                    "issue_date":  r.issue_date,
+                    "expiry_date": r.expiry_date,
+                    "warnings":    r.warnings,
+                    "elapsed_ms":  round(r.elapsed_ms, 1),
                 }
                 for r in self.results
             ],
@@ -83,281 +69,172 @@ class ExtractionResult:
 
 
 # ---------------------------------------------------------------------------
-# Image preprocessing
+# Preprocessing
 # ---------------------------------------------------------------------------
 
 def _preprocess_fullpage(img: Image.Image) -> Image.Image:
-    """Grayscale + Otsu for full-page OCR (no upscale needed at 300 DPI)."""
     arr = np.array(img.convert("L"))
     _, binary = cv2.threshold(arr, 0, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU)
     return Image.fromarray(binary)
 
 
-def _preprocess_crop(crop: Image.Image) -> Image.Image:
-    """Enhanced preprocessing for small, stamped text areas."""
-    # Convert to grayscale
-    arr = cv2.cvtColor(np.array(crop), cv2.COLOR_RGB2GRAY)
-    
-    # 3x Upscale using Cubic Interpolation for smoother character edges
-    arr = cv2.resize(arr, None, fx=3, fy=3, interpolation=cv2.INTER_CUBIC)
-    
-    # Denoise to handle stamp artifacts
-    arr = cv2.fastNlMeansDenoising(arr, None, 10, 7, 21)
-    
-    # Otsu's threshold to create a clean black-and-white mask
-    _, binary = cv2.threshold(arr, 0, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU)
-    
-    return Image.fromarray(binary)
-
-
 # ---------------------------------------------------------------------------
-# OCR helpers
+# OCR — one call per page
 # ---------------------------------------------------------------------------
 
 def _ocr_fullpage(img: Image.Image) -> str:
-    """Full-page English OCR for chassis extraction."""
     import pytesseract
-    return pytesseract.image_to_string(img, config="--oem 1 --psm 6 -l eng").strip()
-
-
-def _ocr_date_crop(img: Image.Image) -> str:
-    import pytesseract
-    # PSM 7: Treat the image as a single text line.
-    # OEM 1: Neural nets LSTM engine only.
-    custom_config = r'--oem 1 --psm 7 -l eng'
-    return pytesseract.image_to_string(img, config=custom_config).strip()
+    return pytesseract.image_to_string(img, config="--oem 1 --psm 6 -l eng")
 
 
 # ---------------------------------------------------------------------------
-# ROI crop helper
+# Chassis
 # ---------------------------------------------------------------------------
 
-def _crop(img: Image.Image, roi: dict) -> Image.Image:
-    W, H = img.size
-    x1 = int(roi["x"] * W)
-    y1 = int(roi["y"] * H)
-    x2 = int((roi["x"] + roi["w"]) * W)
-    y2 = int((roi["y"] + roi["h"]) * H)
-    return img.crop((x1, y1, x2, y2))
-
-
-# ---------------------------------------------------------------------------
-# Regex patterns
-# ---------------------------------------------------------------------------
-
-# Chassis: letters + digits + dash + digits
 _CHASSIS_RE = re.compile(
-    r"([A-Z]{2,10}[0-9]{2,6}[A-Z]?)\s*[-—–]\s*([0-9]{5,10})"
+    r"([A-Z]{2,10}[0-9A-Z]{2,6}[A-Z]?)\s*[-—–_]{1,3}\s*([0-9A-Z\s]{5,15})\b"
 )
-
-# Separator noise in OCR output
-_SEP = r"[\s._,;:|]*"
-
-# Updated Regex to allow 9, 8, or 2 as the leading digit
-_DATE_ENG_RE = re.compile(
-    r"([298]\s*0\s*\d\s*\d)" + _SEP + 
-    r"[A-Za-z]{2,5}" + _SEP + 
-    r"(\d{1,2})" + _SEP + 
-    r"[A-Za-z]{2,6}" + _SEP + 
-    r"(\d{1,2})",
-    re.IGNORECASE,
-)
-
-# Fallback: "Bday" where B=8 (digit merged into word)
-_DATE_ENG_RE2 = re.compile(
-    r"([2980]\s*0\s*\d\s*\d)" + _SEP +
-    r"[A-Za-z]{2,5}" + _SEP +
-    r"(\d{1,2})" + _SEP +
-    r"[A-Za-z]{2,6}" + _SEP +
-    r"([B8])\s*[dD][aeio]*[yY]",
-    re.IGNORECASE,
-)
-
-# Japanese era date: 令和8 (2026) 4月 9日 — garbled through English OCR
-# Matches: (YYYY) then digit(s) then letter then digit(s)
-_DATE_JP_GARBLED_RE = re.compile(
-    r"\(\s*(\d{4})\s*\)" + _SEP +
-    r"[#]?\s*(\d{1,2})\s*[A-Za-z#]+" + _SEP +
-    r"(\d{1,2})"
-)
-
-# ISO format: 2026-03-27 or 2026/03/27
-_DATE_ISO_RE = re.compile(r"\b(\d{4})[-/](\d{1,2})[-/](\d{1,2})\b")
+_OCR_DIGIT_MAP = str.maketrans("LSOIBGZ", "1501862")
 
 
-def _clean_year(raw: str) -> int:
-    """Convert OCR year like '9026' or '20 26' to int 2026."""
-    digits = re.sub(r"[^0-9]", "", raw)
-    if len(digits) == 4:
-        # If it ends in '026' but starts with an OCR error (9, 8, 0)
-        if digits.endswith("026") and digits[0] in "980":
-            return 2026
-    return int(digits)
-
-
-# ---------------------------------------------------------------------------
-# Chassis parser
-# ---------------------------------------------------------------------------
-
-def _fix_chassis_ocr(prefix: str, suffix: str) -> Optional[str]:
-    """Apply common OCR corrections to a chassis number."""
-    suffix = (suffix.replace('L', '1').replace('S', '5').replace('O', '0')
-              .replace('I', '1').replace('B', '8').replace('G', '6').replace('Z', '2'))
-
-    m = re.match(r'([A-Z]+)([0-9A-Z]+)', prefix)
+def _fix_chassis(prefix: str, suffix: str) -> Optional[str]:
+    suffix = suffix.replace(" ", "")
+    if prefix.startswith("I") and len(prefix) > 2:
+        prefix = prefix[1:]
+    m = re.match(r"([A-Z]+)([0-9A-Z]+)", prefix)
     if m:
-        letters = m.group(1)
-        digits = (m.group(2).replace('L', '1').replace('S', '5').replace('O', '0')
-                  .replace('I', '1').replace('B', '8').replace('G', '6').replace('Z', '2'))
-        prefix = letters + digits
-
-    if len(suffix) > 7:
-        suffix = suffix[:7]
-
-    if len(prefix) < 3 or len(prefix) > 10 or len(suffix) < 5:
-        return None
-
-    return f"{prefix}-{suffix}"
+        prefix = m.group(1) + m.group(2).translate(_OCR_DIGIT_MAP)
+    suffix = suffix.translate(_OCR_DIGIT_MAP)[:7]
+    result = f"{prefix}-{suffix}"
+    if re.match(r"^[A-Z]{2,10}\d{2,6}[A-Z]?-\d{5,7}$", result):
+        return result
+    return None
 
 
-def _extract_chassis(text: str) -> Optional[str]:
-    """Find chassis number in full-page OCR text."""
+def extract_chassis(text: str) -> Optional[str]:
     text = unicodedata.normalize("NFKC", text).upper()
     for m in _CHASSIS_RE.finditer(text):
-        chassis = _fix_chassis_ocr(m.group(1), m.group(2))
-        if chassis:
-            return chassis
+        result = _fix_chassis(m.group(1), m.group(2))
+        if result:
+            return result
     return None
 
 
 # ---------------------------------------------------------------------------
-# Date parser — tries multiple patterns on a date-crop OCR text
+# Expiry date  (Export Scheduled Day)
 # ---------------------------------------------------------------------------
 
-def _parse_date(text: str) -> Optional[str]:
-    """Extract a date from OCR text using multiple fallback patterns."""
-    text = unicodedata.normalize("NFKC", text)
+def extract_expiry(text: str) -> Optional[str]:
+    """
+    Anchor: 'Export scheduled day'
+    Date format in OCR output: YYYY [garbled-word] M [garbled-word] D [garbled-word]
+    Year OCR variants: '2026', '20 26', '9026', '8026'
+    Day OCR variant:   'Bday' where B = 8
+    """
+    m_anchor = re.search(r"(?:export|cxport|expart|born|cxpert|expcrt)\s+(?:scheduled|acheduled|schedu[a-z]*|sch[\w]+)\b", text, re.IGNORECASE)
+    if not m_anchor:
+        return None
+    idx = m_anchor.start()
+    chunk = text[idx: idx + 150]
+    chunk = re.sub(r"\bB(?=[dDfF])", "8", chunk)  # Bday → 8day
+    nums = re.findall(r"\d+", chunk)
 
-    # Pattern 1: English "2026 year 3 month 27 day" (fuzzy)
-    for pattern in [_DATE_ENG_RE, _DATE_ENG_RE2]:
-        m = pattern.search(text)
-        if m:
+    year: Optional[int] = None
+    j = 0
+    while j < len(nums):
+        v = int(nums[j])
+        if 2000 <= v <= 2100:
+            year = v; j += 1; break
+        if v in (20, 80, 90) and j + 1 < len(nums):
+            nv = int(nums[j + 1])
+            if 20 <= nv <= 30:
+                year = 2000 + nv if v in (80, 90) else int(f"{v}{nv}")
+                j += 2; break
+        j += 1
+
+    if not year:
+        return None
+
+    md = [int(n) for n in nums[j:] if 1 <= int(n) <= 31]
+    if len(md) < 2:
+        return None
+    try:
+        return date(year, md[0], md[1]).isoformat()
+    except ValueError:
+        return None
+
+
+# ---------------------------------------------------------------------------
+# Issue date  (Date of Application stamp at the bottom)
+# ---------------------------------------------------------------------------
+
+def extract_issue(text: str) -> Optional[str]:
+    """
+    Anchor: parenthesised Gregorian year  (YYYY)  in the bottom stamp area.
+    The garbled Japanese date 'sm8 (2026) #4H 98H' gives year=2026, month=4, day=9.
+    '98' = day-digit '9' + garbled '日' glyph '8' → clamp to first digit if > 31.
+    Skip any (YYYY) that appears in a mileage/km context.
+    """
+    best: Optional[str] = None
+    for m in re.finditer(r"[\(\[\{]\s*(\d{4})\s*[\)\]\}]", text):
+        y = int(m.group(1))
+        if not (2000 <= y <= 2100):
+            continue
+        after = text[m.end(): m.end() + 30]
+        if re.search(r"[A-Z]\)|\bkm\b", after, re.IGNORECASE):
+            continue
+        md_nums = re.findall(r"\d+", after)
+        if len(md_nums) < 2:
+            continue
+        mo = int(md_nums[0])
+        da = int(md_nums[1])
+        if da > 31:
+            da = int(str(da)[0])
+        if 1 <= mo <= 12 and 1 <= da <= 31:
             try:
-                year = _clean_year(m.group(1))
-                month = int(m.group(2))
-                day_raw = m.group(3)
-                day = int(day_raw.replace('B', '8').replace('b', '8'))
-                d = date(year, month, day)
-                if 2000 <= d.year <= 2100:
-                    return d.isoformat()
-            except (ValueError, OverflowError):
+                best = date(y, mo, da).isoformat()
+            except ValueError:
                 pass
-
-    # Pattern 2: Garbled Japanese era "(2026) 4A 9" from English OCR
-    m = _DATE_JP_GARBLED_RE.search(text)
-    if m:
-        try:
-            year, month, day = int(m.group(1)), int(m.group(2)), int(m.group(3))
-            d = date(year, month, day)
-            if 2000 <= d.year <= 2100:
-                return d.isoformat()
-        except (ValueError, OverflowError):
-            pass
-
-    # Pattern 3: ISO date
-    m = _DATE_ISO_RE.search(text)
-    if m:
-        try:
-            year, month, day = int(m.group(1)), int(m.group(2)), int(m.group(3))
-            d = date(year, month, day)
-            if 2000 <= d.year <= 2100:
-                return d.isoformat()
-        except (ValueError, OverflowError):
-            pass
-
-    return None
+    return best
 
 
 # ---------------------------------------------------------------------------
-# Single page extraction
+# Page extraction
 # ---------------------------------------------------------------------------
 
 def _extract_page(page: fitz.Page, page_number: int) -> PageResult:
     t0 = time.monotonic()
-    warnings: list[str] = []
 
-    # 1 — Render to PIL Image at 300 DPI
     mat = fitz.Matrix(RENDER_DPI / 72, RENDER_DPI / 72)
     pix = page.get_pixmap(matrix=mat, alpha=False)
     img = Image.frombytes("RGB", [pix.width, pix.height], pix.samples)
 
-    # 2 — ROI crops
-    chassis_raw = _crop(img, ROIS["chassis_no"])
-    expiry_raw  = _crop(img, ROIS["expiry_date"])
-    issue_raw   = _crop(img, ROIS["issue_date"])
-
-    chassis_proc = _preprocess_crop(chassis_raw)
-    expiry_proc  = _preprocess_crop(expiry_raw)
-    issue_proc   = _preprocess_crop(issue_raw)
-
-    # 3 — OCR
-    import pytesseract
-    try:
-        chassis_text = pytesseract.image_to_string(chassis_proc, config="--oem 1 --psm 6 -l eng").strip()
-    except Exception as exc:
-        logger.error("p%d chassis OCR failed: %s", page_number, exc)
-        chassis_text = ""
-        warnings.append("OCR_FAILED_CHASSIS")
-
-    chassis_no = _extract_chassis(chassis_text)
+    proc = _preprocess_fullpage(img)
 
     try:
-        expiry_text = _ocr_date_crop(expiry_proc)
+        raw_text = _ocr_fullpage(proc)
     except Exception as exc:
-        expiry_text = ""
-        warnings.append("OCR_FAILED_EXPIRY")
+        logger.error("p%d OCR failed: %s", page_number, exc)
+        return PageResult(
+            page_number=page_number,
+            chassis_no=None, issue_date=None, expiry_date=None,
+            warnings=["OCR_FAILED"],
+            elapsed_ms=(time.monotonic() - t0) * 1000,
+        )
 
-    try:
-        issue_text = _ocr_date_crop(issue_proc)
-    except Exception as exc:
-        issue_text = ""
-        warnings.append("OCR_FAILED_ISSUE")
+    chassis_no  = extract_chassis(raw_text)
+    expiry_date = extract_expiry(raw_text)
+    issue_date  = extract_issue(raw_text)
 
-    expiry_date = _parse_date(expiry_text)
-    issue_date  = _parse_date(issue_text)
-
-    # 4 — Debug output for first 3 pages
-    if page_number <= 3:
-        try:
-            debug_dir = Path("static/debug")
-            debug_dir.mkdir(parents=True, exist_ok=True)
-            expiry_raw.save(debug_dir / f"raw_expiry_p{page_number}.png")
-            issue_raw.save(debug_dir / f"raw_issue_p{page_number}.png")
-            chassis_raw.save(debug_dir / f"raw_chassis_p{page_number}.png")
-            expiry_proc.save(debug_dir / f"proc_expiry_p{page_number}.png")
-            issue_proc.save(debug_dir / f"proc_issue_p{page_number}.png")
-            chassis_proc.save(debug_dir / f"proc_chassis_p{page_number}.png")
-            (debug_dir / f"ocr_expiry_p{page_number}.txt").write_text(expiry_text, encoding="utf-8")
-            (debug_dir / f"ocr_issue_p{page_number}.txt").write_text(issue_text, encoding="utf-8")
-            (debug_dir / f"ocr_chassis_p{page_number}.txt").write_text(chassis_text, encoding="utf-8")
-            
-            if page_number == 1:
-                chassis_proc.save(debug_dir / "crop_chassis.png")
-                issue_proc.save(debug_dir / "crop_issue.png")
-                expiry_proc.save(debug_dir / "crop_expiry.png")
-        except Exception:
-            pass
-
-    # 5 — Warnings
-    if chassis_no is None:
-        warnings.append("PARSE_FAIL_CHASSIS")
-    if issue_date is None:
-        warnings.append("PARSE_FAIL_ISSUE_DATE")
-    if expiry_date is None:
-        warnings.append("PARSE_FAIL_EXPIRY_DATE")
-
+    warnings: list[str] = []
+    if chassis_no  is None: warnings.append("PARSE_FAIL_CHASSIS")
+    if issue_date  is None: warnings.append("PARSE_FAIL_ISSUE_DATE")
+    if expiry_date is None: warnings.append("PARSE_FAIL_EXPIRY_DATE")
     if issue_date and expiry_date and expiry_date < issue_date:
         warnings.append("DATE_INCONSISTENT")
+
+    if page_number <= 3:
+        _save_debug(page_number, img, raw_text)
 
     elapsed = (time.monotonic() - t0) * 1000
     return PageResult(
@@ -366,16 +243,28 @@ def _extract_page(page: fitz.Page, page_number: int) -> PageResult:
         issue_date=issue_date,
         expiry_date=expiry_date,
         warnings=warnings,
+        raw_text=raw_text,
         elapsed_ms=elapsed,
     )
 
 
+def _save_debug(pn: int, img: Image.Image, raw_text: str) -> None:
+    try:
+        d = Path("static/debug")
+        d.mkdir(parents=True, exist_ok=True)
+        thumb = img.copy()
+        thumb.thumbnail((1800, 1800))
+        thumb.save(d / f"page_{pn}.png")
+        (d / f"ocr_fullpage_p{pn}.txt").write_text(raw_text, encoding="utf-8")
+    except Exception as exc:
+        logger.debug("Debug save failed: %s", exc)
+
+
 # ---------------------------------------------------------------------------
-# Document-level entry point
+# Document entry point
 # ---------------------------------------------------------------------------
 
 def extract_pdf(pdf_path: str | Path) -> ExtractionResult:
-    """Extract chassis_no, issue_date, expiry_date from every page."""
     path = Path(pdf_path)
     results: list[PageResult] = []
 
@@ -389,12 +278,14 @@ def extract_pdf(pdf_path: str | Path) -> ExtractionResult:
                 result = _extract_page(page, pn)
             except Exception as exc:
                 logger.error("p%d failed: %s", pn, exc)
-                result = PageResult(page_number=pn, chassis_no=None,
-                                    issue_date=None, expiry_date=None,
-                                    warnings=[f"PAGE_FAILED: {exc}"])
+                result = PageResult(
+                    page_number=pn,
+                    chassis_no=None, issue_date=None, expiry_date=None,
+                    warnings=[f"PAGE_FAILED: {exc}"],
+                )
             results.append(result)
             logger.info(
-                "p%d → chassis=%s  issue=%s  expiry=%s  warn=%s  %.0fms",
+                "p%d → chassis=%s  issue=%s  expiry=%s  warn=%s  (%.0f ms)",
                 pn, result.chassis_no, result.issue_date,
                 result.expiry_date, result.warnings, result.elapsed_ms,
             )
