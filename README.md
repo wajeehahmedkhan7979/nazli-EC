@@ -1,66 +1,163 @@
-# EC PDF Field Extractor
+# EC PDF Extractor v2
 
-This is a standalone Python service for extracting exactly three fields (`chassis_no`, `issue_date`, `expiration_date`) from image-based PDF "Export Certificate" (EC) documents.
+Extracts `chassis_no`, `issue_date`, `expiry_date` from all pages of a Japanese
+MLIT Export Certificate PDF.
 
-## Architecture Highlights
-- **ROI-First OCR:** Uses PyMuPDF to render pages to images, then crops target regions before running OCR. This minimizes noise and improves parsing accuracy.
-- **Dual OCR Engines:** Primary is PaddleOCR (fast, local, good for Japanese/English mixed). Falls back to Tesseract if confidence is low.
-- **Hardened Parsing:** Deterministic regex parsing for chassis numbers and multi-format date resolution (ISO, compact, Japanese era).
-- **Cross-Field Validation:** Validates `expiration_date >= issue_date`.
-- **Anchor-Based ROI Support:** Can dynamically shift static ROI crops based on OCR-detected anchor texts to handle scan drift.
+**Zero AI. Zero paid services. Runs entirely on your own machine.**
 
-## Setup
+---
 
-Requires Python 3.10+.
+## How it works
 
-### System Dependencies
-You will need Tesseract and its Japanese language pack, as well as OpenCV dependencies:
-```bash
-sudo apt-get install tesseract-ocr tesseract-ocr-jpn libgl1-mesa-glx
+```
+Upload PDF → PyMuPDF renders each page → Fixed ROI crops → Tesseract OCR → Regex parse → JSON
 ```
 
-### Python Dependencies
+No ML models, no cloud APIs. Each page takes ~0.5–1.5 s depending on your CPU.
+
+---
+
+## Prerequisites
+
+### 1. Python 3.10+
+### 2. Tesseract with Japanese language pack
+
+**Ubuntu / Debian:**
 ```bash
-python -m venv venv
-source venv/bin/activate
-pip install -e ".[dev]"
+sudo apt-get install tesseract-ocr tesseract-ocr-jpn tesseract-ocr-eng
 ```
 
-## Running the API
+**macOS:**
+```bash
+brew install tesseract tesseract-lang
+```
+
+**Windows:**
+Download the installer from https://github.com/UB-Mannheim/tesseract/wiki
+and add it to your PATH. Install the `jpn` and `eng` data files.
+
+---
+
+## Installation
 
 ```bash
+git clone https://github.com/wajeehahmedkhan7979/nazli-EC.git
+cd nazli-EC
+pip install -e .
+```
+
+---
+
+## Running
+
+```bash
+# Copy and edit the env file
+cp .env.example .env
+# edit FORWARD_URL if you want results auto-sent to your ERP/frontend
+
 python main.py
+# → http://localhost:8080
 ```
-This starts a FastAPI server on `http://0.0.0.0:8080`.
+
+---
 
 ## API Usage
 
-**Endpoint:** `POST /v1/extract`
-**Content-Type:** `multipart/form-data`
+### Extract a PDF
 
 ```bash
 curl -X POST http://localhost:8080/v1/extract \
-  -F "file=@/path/to/your/document.pdf" \
-  -F "template_hint=export_certificate_v1"
+  -F "file=@/path/to/export_certificate.pdf"
 ```
 
-The response is a JSON object summarizing the extraction results per page, including confidence scores and any validation warnings.
+**Response:**
+```json
+{
+  "file_id": "3fa85f64-...",
+  "file_name": "EC_4_30.pdf",
+  "page_count": 51,
+  "summary": {
+    "total_pages": 51,
+    "fully_extracted": 50,
+    "partial": 1,
+    "failed": 0,
+    "success_rate": "98.0%"
+  },
+  "results": [
+    {
+      "page": 1,
+      "chassis_no": "NKE165-7242932",
+      "issue_date": "2026-03-27",
+      "expiry_date": "2026-08-06",
+      "warnings": [],
+      "elapsed_ms": 820.3
+    }
+  ]
+}
+```
 
-## Configuration
+### Retrieve a previous result
 
-- **Thresholds & OCR config:** `configs/thresholds.yaml`
-- **Template definitions (ROI coordinates):** `configs/templates/`
-
-### Template Probe Utility
-To calibrate ROI coordinates for a new or modified template, run the interactive probe:
 ```bash
-python scripts/template_probe.py /path/to/sample.pdf 1
+curl http://localhost:8080/v1/results/{file_id}
 ```
-This lets you draw bounding boxes and prints out the fractional `(x, y, width, height)` values needed for the template YAML files.
 
-## Testing
+### Health check
 
-Run the full test suite (unit and mocked integration tests):
+```bash
+curl http://localhost:8080/health
+```
+
+---
+
+## Forwarding to your ERP / frontend
+
+Set `FORWARD_URL` in your `.env`:
+```
+FORWARD_URL=https://your-erp.com/api/ec-results
+FORWARD_API_KEY=your-bearer-token
+```
+
+After every extraction the service will POST the full JSON payload to that URL.
+Your frontend endpoint just needs to accept a POST with a JSON body.
+
+---
+
+## Docker
+
+```bash
+docker build -t ec-extractor .
+docker run -p 8080:8080 \
+  -e FORWARD_URL=https://your-erp.com/api/ec-results \
+  -e FORWARD_API_KEY=your-key \
+  -v $(pwd)/data:/app/data \
+  ec-extractor
+```
+
+---
+
+## Running tests
+
 ```bash
 pytest tests/ -v
+```
+
+---
+
+## ROI Calibration (if layout changes)
+
+If you receive a different form variant, edit the `ROIS` dict at the top of
+`src/extractor.py`. Values are fractional (0.0–1.0 relative to page size):
+
+```python
+ROIS = {
+    "chassis_no": dict(x=0.58, y=0.115, w=0.38, h=0.060),
+    "issue_date":  dict(x=0.26, y=0.115, w=0.24, h=0.060),
+    "expiry_date": dict(x=0.22, y=0.575, w=0.38, h=0.085),
+}
+```
+
+To find new coordinates, run the probe script:
+```bash
+python scripts/probe_rois.py /path/to/new_form.pdf
 ```
