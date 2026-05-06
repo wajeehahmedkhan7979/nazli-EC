@@ -1,22 +1,23 @@
 [project]
 name = "ec-extractor"
 version = "2.0.0"
-description = "EC PDF field extractor — no AI, no paid services"
-requires-python = ">=3.10"
+description = "EC PDF field extractor — PaddleOCR-based"
+requires-python = ">=3.10,<3.13"
 dependencies = [
     # PDF rendering
     "pymupdf>=1.24.0",
     # Image processing
     "pillow>=10.0.0",
-    "numpy>=1.26.0",
+    "numpy>=1.26.0,<2.0.0",
     "opencv-python-headless>=4.9.0",
-    # OCR (Tesseract wrapper — Tesseract binary must be installed separately)
-    "pytesseract>=0.3.10",
+    # OCR (Paddle stack — explicitly pinned)
+    "paddlepaddle==3.2.2",
+    "paddleocr==2.7.3",
     # API server
     "fastapi>=0.111.0",
     "uvicorn[standard]>=0.30.0",
     "python-multipart>=0.0.9",
-    # HTTP client for forwarding results to frontend/ERP
+    # HTTP client
     "httpx>=0.27.0",
 ]
 

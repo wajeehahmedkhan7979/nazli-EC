@@ -1,0 +1,533 @@
+{
+  "file_name": "ec_421601f0-ae2d-402c-a087-f8d5c7f4c6ac.pdf",
+  "page_count": 51,
+  "results": [
+    {
+      "page": 1,
+      "chassis_no": null,
+      "issue_date": "2021-03-01",
+      "expiry_date": null,
+      "warnings": [
+        "PARSE_FAIL_CHASSIS",
+        "PARSE_FAIL_EXPIRY_DATE"
+      ],
+      "elapsed_ms": 4624.8
+    },
+    {
+      "page": 2,
+      "chassis_no": null,
+      "issue_date": "2021-02-01",
+      "expiry_date": null,
+      "warnings": [
+        "PARSE_FAIL_CHASSIS",
+        "PARSE_FAIL_EXPIRY_DATE"
+      ],
+      "elapsed_ms": 4272.8
+    },
+    {
+      "page": 3,
+      "chassis_no": "NRE1161-0107172",
+      "issue_date": "2026-04-09",
+      "expiry_date": "2026-08-06",
+      "warnings": [],
+      "elapsed_ms": 4365.1
+    },
+    {
+      "page": 4,
+      "chassis_no": "ZWRO90-0032144",
+      "issue_date": "2022-09-03",
+      "expiry_date": null,
+      "warnings": [
+        "PARSE_FAIL_EXPIRY_DATE"
+      ],
+      "elapsed_ms": 5603.6
+    },
+    {
+      "page": 5,
+      "chassis_no": null,
+      "issue_date": "2026-08-03",
+      "expiry_date": "2026-08-03",
+      "warnings": [
+        "PARSE_FAIL_CHASSIS"
+      ],
+      "elapsed_ms": 3401.4
+    },
+    {
+      "page": 6,
+      "chassis_no": "AXAH54-4027082",
+      "issue_date": "2026-08-06",
+      "expiry_date": "2026-08-06",
+      "warnings": [],
+      "elapsed_ms": 3541.3
+    },
+    {
+      "page": 7,
+      "chassis_no": "AXAH54-4032640",
+      "issue_date": "2024-01-08",
+      "expiry_date": null,
+      "warnings": [
+        "PARSE_FAIL_EXPIRY_DATE"
+      ],
+      "elapsed_ms": 8703.3
+    },
+    {
+      "page": 8,
+      "chassis_no": null,
+      "issue_date": "2023-08-01",
+      "expiry_date": null,
+      "warnings": [
+        "PARSE_FAIL_CHASSIS",
+        "PARSE_FAIL_EXPIRY_DATE"
+      ],
+      "elapsed_ms": 8269.4
+    },
+    {
+      "page": 9,
+      "chassis_no": null,
+      "issue_date": "2022-02-01",
+      "expiry_date": null,
+      "warnings": [
+        "PARSE_FAIL_CHASSIS",
+        "PARSE_FAIL_EXPIRY_DATE"
+      ],
+      "elapsed_ms": 9826.9
+    },
+    {
+      "page": 10,
+      "chassis_no": null,
+      "issue_date": "2023-08-01",
+      "expiry_date": null,
+      "warnings": [
+        "PARSE_FAIL_CHASSIS",
+        "PARSE_FAIL_EXPIRY_DATE"
+      ],
+      "elapsed_ms": 3942.5
+    },
+    {
+      "page": 11,
+      "chassis_no": null,
+      "issue_date": "2023-12-13",
+      "expiry_date": null,
+      "warnings": [
+        "PARSE_FAIL_CHASSIS",
+        "PARSE_FAIL_EXPIRY_DATE"
+      ],
+      "elapsed_ms": 4242.0
+    },
+    {
+      "page": 12,
+      "chassis_no": null,
+      "issue_date": "2021-03-16",
+      "expiry_date": null,
+      "warnings": [
+        "PARSE_FAIL_CHASSIS",
+        "PARSE_FAIL_EXPIRY_DATE"
+      ],
+      "elapsed_ms": 4109.1
+    },
+    {
+      "page": 13,
+      "chassis_no": null,
+      "issue_date": "2026-04-14",
+      "expiry_date": "2026-08-10",
+      "warnings": [
+        "PARSE_FAIL_CHASSIS"
+      ],
+      "elapsed_ms": 4465.9
+    },
+    {
+      "page": 14,
+      "chassis_no": null,
+      "issue_date": "2021-03-01",
+      "expiry_date": "2024-01-04",
+      "warnings": [
+        "PARSE_FAIL_CHASSIS"
+      ],
+      "elapsed_ms": 4213.3
+    },
+    {
+      "page": 15,
+      "chassis_no": null,
+      "issue_date": "2021-03-16",
+      "expiry_date": null,
+      "warnings": [
+        "PARSE_FAIL_CHASSIS",
+        "PARSE_FAIL_EXPIRY_DATE"
+      ],
+      "elapsed_ms": 4064.9
+    },
+    {
+      "page": 16,
+      "chassis_no": "NKE165-7251052",
+      "issue_date": "2025-11-21",
+      "expiry_date": null,
+      "warnings": [
+        "PARSE_FAIL_EXPIRY_DATE"
+      ],
+      "elapsed_ms": 4155.2
+    },
+    {
+      "page": 17,
+      "chassis_no": null,
+      "issue_date": "2024-11-02",
+      "expiry_date": "2026-08-04",
+      "warnings": [
+        "PARSE_FAIL_CHASSIS"
+      ],
+      "elapsed_ms": 4571.3
+    },
+    {
+      "page": 18,
+      "chassis_no": null,
+      "issue_date": "2026-08-10",
+      "expiry_date": null,
+      "warnings": [
+        "PARSE_FAIL_CHASSIS",
+        "PARSE_FAIL_EXPIRY_DATE"
+      ],
+      "elapsed_ms": 4209.0
+    },
+    {
+      "page": 19,
+      "chassis_no": null,
+      "issue_date": "2026-04-09",
+      "expiry_date": null,
+      "warnings": [
+        "PARSE_FAIL_CHASSIS",
+        "PARSE_FAIL_EXPIRY_DATE"
+      ],
+      "elapsed_ms": 4352.0
+    },
+    {
+      "page": 20,
+      "chassis_no": null,
+      "issue_date": "2026-04-14",
+      "expiry_date": "2026-08-10",
+      "warnings": [
+        "PARSE_FAIL_CHASSIS"
+      ],
+      "elapsed_ms": 4460.5
+    },
+    {
+      "page": 21,
+      "chassis_no": null,
+      "issue_date": "2026-08-10",
+      "expiry_date": "2026-08-10",
+      "warnings": [
+        "PARSE_FAIL_CHASSIS"
+      ],
+      "elapsed_ms": 4307.4
+    },
+    {
+      "page": 22,
+      "chassis_no": null,
+      "issue_date": "2024-03-01",
+      "expiry_date": "2026-08-10",
+      "warnings": [
+        "PARSE_FAIL_CHASSIS"
+      ],
+      "elapsed_ms": 4076.6
+    },
+    {
+      "page": 23,
+      "chassis_no": "NRE161-0095318",
+      "issue_date": "2024-03-01",
+      "expiry_date": "2026-08-10",
+      "warnings": [],
+      "elapsed_ms": 4173.7
+    },
+    {
+      "page": 24,
+      "chassis_no": null,
+      "issue_date": "2026-04-14",
+      "expiry_date": null,
+      "warnings": [
+        "PARSE_FAIL_CHASSIS",
+        "PARSE_FAIL_EXPIRY_DATE"
+      ],
+      "elapsed_ms": 4188.9
+    },
+    {
+      "page": 25,
+      "chassis_no": null,
+      "issue_date": "2026-08-10",
+      "expiry_date": "2026-08-10",
+      "warnings": [
+        "PARSE_FAIL_CHASSIS"
+      ],
+      "elapsed_ms": 4219.3
+    },
+    {
+      "page": 26,
+      "chassis_no": null,
+      "issue_date": "2021-02-01",
+      "expiry_date": null,
+      "warnings": [
+        "PARSE_FAIL_CHASSIS",
+        "PARSE_FAIL_EXPIRY_DATE"
+      ],
+      "elapsed_ms": 4488.0
+    },
+    {
+      "page": 27,
+      "chassis_no": null,
+      "issue_date": "2025-03-02",
+      "expiry_date": null,
+      "warnings": [
+        "PARSE_FAIL_CHASSIS",
+        "PARSE_FAIL_EXPIRY_DATE"
+      ],
+      "elapsed_ms": 8444.9
+    },
+    {
+      "page": 28,
+      "chassis_no": null,
+      "issue_date": "2022-03-01",
+      "expiry_date": null,
+      "warnings": [
+        "PARSE_FAIL_CHASSIS",
+        "PARSE_FAIL_EXPIRY_DATE"
+      ],
+      "elapsed_ms": 6912.3
+    },
+    {
+      "page": 29,
+      "chassis_no": "SI210-9304304",
+      "issue_date": "2023-10-01",
+      "expiry_date": null,
+      "warnings": [
+        "PARSE_FAIL_EXPIRY_DATE"
+      ],
+      "elapsed_ms": 6811.4
+    },
+    {
+      "page": 30,
+      "chassis_no": null,
+      "issue_date": "2026-03-26",
+      "expiry_date": "2026-03-26",
+      "warnings": [
+        "PARSE_FAIL_CHASSIS"
+      ],
+      "elapsed_ms": 4845.4
+    },
+    {
+      "page": 31,
+      "chassis_no": null,
+      "issue_date": "2026-04-01",
+      "expiry_date": "2026-08-13",
+      "warnings": [
+        "PARSE_FAIL_CHASSIS"
+      ],
+      "elapsed_ms": 4280.7
+    },
+    {
+      "page": 32,
+      "chassis_no": null,
+      "issue_date": "2026-04-14",
+      "expiry_date": null,
+      "warnings": [
+        "PARSE_FAIL_CHASSIS",
+        "PARSE_FAIL_EXPIRY_DATE"
+      ],
+      "elapsed_ms": 4135.8
+    },
+    {
+      "page": 33,
+      "chassis_no": "VG1138-1033624",
+      "issue_date": "2024-02-04",
+      "expiry_date": null,
+      "warnings": [
+        "PARSE_FAIL_EXPIRY_DATE"
+      ],
+      "elapsed_ms": 9164.1
+    },
+    {
+      "page": 34,
+      "chassis_no": null,
+      "issue_date": "2026-08-20",
+      "expiry_date": "2026-08-20",
+      "warnings": [
+        "PARSE_FAIL_CHASSIS"
+      ],
+      "elapsed_ms": 4548.6
+    },
+    {
+      "page": 35,
+      "chassis_no": null,
+      "issue_date": "2021-03-01",
+      "expiry_date": "2026-08-06",
+      "warnings": [
+        "PARSE_FAIL_CHASSIS"
+      ],
+      "elapsed_ms": 4645.7
+    },
+    {
+      "page": 36,
+      "chassis_no": null,
+      "issue_date": "2024-02-02",
+      "expiry_date": null,
+      "warnings": [
+        "PARSE_FAIL_CHASSIS",
+        "PARSE_FAIL_EXPIRY_DATE"
+      ],
+      "elapsed_ms": 6461.6
+    },
+    {
+      "page": 37,
+      "chassis_no": null,
+      "issue_date": "2021-09-05",
+      "expiry_date": null,
+      "warnings": [
+        "PARSE_FAIL_CHASSIS",
+        "PARSE_FAIL_EXPIRY_DATE"
+      ],
+      "elapsed_ms": 9215.2
+    },
+    {
+      "page": 38,
+      "chassis_no": "NREV61-0095402",
+      "issue_date": "2026-08-16",
+      "expiry_date": "2026-08-16",
+      "warnings": [],
+      "elapsed_ms": 4380.3
+    },
+    {
+      "page": 39,
+      "chassis_no": "SA528035-0268711",
+      "issue_date": "2026-04-14",
+      "expiry_date": null,
+      "warnings": [
+        "PARSE_FAIL_EXPIRY_DATE"
+      ],
+      "elapsed_ms": 3990.0
+    },
+    {
+      "page": 40,
+      "chassis_no": null,
+      "issue_date": "2023-01-01",
+      "expiry_date": null,
+      "warnings": [
+        "PARSE_FAIL_CHASSIS",
+        "PARSE_FAIL_EXPIRY_DATE"
+      ],
+      "elapsed_ms": 7966.4
+    },
+    {
+      "page": 41,
+      "chassis_no": "ZVYX11-2039294",
+      "issue_date": "2026-08-16",
+      "expiry_date": null,
+      "warnings": [
+        "PARSE_FAIL_EXPIRY_DATE"
+      ],
+      "elapsed_ms": 4285.2
+    },
+    {
+      "page": 42,
+      "chassis_no": null,
+      "issue_date": "2024-06-02",
+      "expiry_date": null,
+      "warnings": [
+        "PARSE_FAIL_CHASSIS",
+        "PARSE_FAIL_EXPIRY_DATE"
+      ],
+      "elapsed_ms": 4450.5
+    },
+    {
+      "page": 43,
+      "chassis_no": null,
+      "issue_date": "2022-02-02",
+      "expiry_date": null,
+      "warnings": [
+        "PARSE_FAIL_CHASSIS",
+        "PARSE_FAIL_EXPIRY_DATE"
+      ],
+      "elapsed_ms": 9170.1
+    },
+    {
+      "page": 44,
+      "chassis_no": null,
+      "issue_date": "2026-04-02",
+      "expiry_date": "2026-08-20",
+      "warnings": [
+        "PARSE_FAIL_CHASSIS"
+      ],
+      "elapsed_ms": 4624.4
+    },
+    {
+      "page": 45,
+      "chassis_no": null,
+      "issue_date": "2021-09-11",
+      "expiry_date": null,
+      "warnings": [
+        "PARSE_FAIL_CHASSIS",
+        "PARSE_FAIL_EXPIRY_DATE"
+      ],
+      "elapsed_ms": 7675.8
+    },
+    {
+      "page": 46,
+      "chassis_no": null,
+      "issue_date": "2024-02-02",
+      "expiry_date": "2026-08-07",
+      "warnings": [
+        "PARSE_FAIL_CHASSIS"
+      ],
+      "elapsed_ms": 4403.2
+    },
+    {
+      "page": 47,
+      "chassis_no": null,
+      "issue_date": null,
+      "expiry_date": null,
+      "warnings": [
+        "PARSE_FAIL_CHASSIS",
+        "PARSE_FAIL_ISSUE_DATE",
+        "PARSE_FAIL_EXPIRY_DATE"
+      ],
+      "elapsed_ms": 10206.5
+    },
+    {
+      "page": 48,
+      "chassis_no": null,
+      "issue_date": "2026-08-16",
+      "expiry_date": "2026-08-16",
+      "warnings": [
+        "PARSE_FAIL_CHASSIS"
+      ],
+      "elapsed_ms": 4695.3
+    },
+    {
+      "page": 49,
+      "chassis_no": null,
+      "issue_date": "2023-10-01",
+      "expiry_date": null,
+      "warnings": [
+        "PARSE_FAIL_CHASSIS",
+        "PARSE_FAIL_EXPIRY_DATE"
+      ],
+      "elapsed_ms": 11162.7
+    },
+    {
+      "page": 50,
+      "chassis_no": null,
+      "issue_date": "2026-01-18",
+      "expiry_date": null,
+      "warnings": [
+        "PARSE_FAIL_CHASSIS",
+        "PARSE_FAIL_EXPIRY_DATE"
+      ],
+      "elapsed_ms": 9654.8
+    },
+    {
+      "page": 51,
+      "chassis_no": "MXPJ10-2026004",
+      "issue_date": "2024-06-01",
+      "expiry_date": null,
+      "warnings": [
+        "PARSE_FAIL_EXPIRY_DATE"
+      ],
+      "elapsed_ms": 5356.4
+    }
+  ]
+}
