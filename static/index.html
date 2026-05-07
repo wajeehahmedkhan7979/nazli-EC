@@ -1,0 +1,451 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>EC PDF Extractor | Dashboard</title>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Outfit:wght@400;600;800&display=swap" rel="stylesheet">
+    <style>
+        :root {
+            --primary: #6366f1;
+            --primary-hover: #4f46e5;
+            --bg: #0f172a;
+            --card-bg: rgba(30, 41, 59, 0.7);
+            --text: #f8fafc;
+            --text-dim: #94a3b8;
+            --success: #22c55e;
+            --warning: #eab308;
+            --danger: #ef4444;
+            --border: rgba(255, 255, 255, 0.1);
+        }
+
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+        }
+
+        body {
+            font-family: 'Inter', sans-serif;
+            background: var(--bg);
+            color: var(--text);
+            line-height: 1.6;
+            overflow-x: hidden;
+            background-image: 
+                radial-gradient(circle at 10% 20%, rgba(99, 102, 241, 0.1) 0%, transparent 40%),
+                radial-gradient(circle at 90% 80%, rgba(168, 85, 247, 0.1) 0%, transparent 40%);
+            min-height: 100vh;
+        }
+
+        .container {
+            max-width: 1100px;
+            margin: 0 auto;
+            padding: 4rem 2rem;
+        }
+
+        header {
+            text-align: center;
+            margin-bottom: 4rem;
+        }
+
+        h1 {
+            font-family: 'Outfit', sans-serif;
+            font-size: 3.5rem;
+            font-weight: 800;
+            margin-bottom: 1rem;
+            background: linear-gradient(135deg, #fff 0%, #94a3b8 100%);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            letter-spacing: -0.02em;
+        }
+
+        p.subtitle {
+            color: var(--text-dim);
+            font-size: 1.1rem;
+        }
+
+        .upload-card {
+            background: var(--card-bg);
+            backdrop-filter: blur(20px);
+            border: 1px solid var(--border);
+            border-radius: 24px;
+            padding: 3rem;
+            text-align: center;
+            margin-bottom: 3rem;
+            box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.5);
+            transition: transform 0.3s ease;
+        }
+
+        .upload-card:hover {
+            transform: translateY(-4px);
+            border-color: rgba(99, 102, 241, 0.3);
+        }
+
+        .drop-zone {
+            border: 2px dashed rgba(255, 255, 255, 0.1);
+            border-radius: 16px;
+            padding: 3rem;
+            cursor: pointer;
+            transition: all 0.2s ease;
+            position: relative;
+        }
+
+        .drop-zone:hover {
+            border-color: var(--primary);
+            background: rgba(99, 102, 241, 0.05);
+        }
+
+        .drop-zone input {
+            position: absolute;
+            width: 100%;
+            height: 100%;
+            top: 0;
+            left: 0;
+            opacity: 0;
+            cursor: pointer;
+        }
+
+        .icon {
+            font-size: 3rem;
+            margin-bottom: 1rem;
+            display: block;
+        }
+
+        .btn {
+            background: var(--primary);
+            color: white;
+            border: none;
+            padding: 0.8rem 2.5rem;
+            border-radius: 12px;
+            font-weight: 600;
+            font-size: 1rem;
+            cursor: pointer;
+            transition: all 0.2s ease;
+            margin-top: 2rem;
+            box-shadow: 0 10px 15px -3px rgba(99, 102, 241, 0.4);
+        }
+
+        .btn:hover {
+            background: var(--primary-hover);
+            transform: scale(1.02);
+        }
+
+        .btn:disabled {
+            background: #475569;
+            cursor: not-allowed;
+            transform: none;
+            box-shadow: none;
+        }
+
+        #status {
+            margin-top: 1.5rem;
+            font-weight: 500;
+            min-height: 1.5rem;
+        }
+
+        .results-section {
+            display: none;
+            animation: fadeIn 0.5s ease-out;
+        }
+
+        @keyframes fadeIn {
+            from { opacity: 0; transform: translateY(20px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+
+        .summary-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 1.5rem;
+            margin-bottom: 2rem;
+        }
+
+        .summary-item {
+            background: var(--card-bg);
+            border: 1px solid var(--border);
+            padding: 1.5rem;
+            border-radius: 16px;
+            text-align: center;
+        }
+
+        .summary-item label {
+            display: block;
+            color: var(--text-dim);
+            font-size: 0.85rem;
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+            margin-bottom: 0.5rem;
+        }
+
+        .summary-item span {
+            font-size: 1.8rem;
+            font-weight: 700;
+            font-family: 'Outfit', sans-serif;
+        }
+
+        .table-container {
+            background: var(--card-bg);
+            border: 1px solid var(--border);
+            border-radius: 16px;
+            overflow: hidden;
+            box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.3);
+        }
+
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            text-align: left;
+        }
+
+        th {
+            background: rgba(15, 23, 42, 0.5);
+            padding: 1rem 1.5rem;
+            font-size: 0.85rem;
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+            color: var(--text-dim);
+            font-weight: 600;
+            border-bottom: 1px solid var(--border);
+        }
+
+        td {
+            padding: 1rem 1.5rem;
+            border-bottom: 1px solid var(--border);
+            font-size: 0.95rem;
+        }
+
+        tr:last-child td {
+            border-bottom: none;
+        }
+
+        tr:hover td {
+            background: rgba(255, 255, 255, 0.02);
+        }
+
+        .badge {
+            padding: 0.25rem 0.6rem;
+            border-radius: 6px;
+            font-size: 0.75rem;
+            font-weight: 600;
+        }
+
+        .badge-success { background: rgba(34, 197, 94, 0.2); color: #4ade80; }
+        .badge-warning { background: rgba(234, 179, 8, 0.2); color: #fde047; }
+        .badge-danger { background: rgba(239, 68, 68, 0.2); color: #f87171; }
+
+        .loader {
+            display: none;
+            width: 24px;
+            height: 24px;
+            border: 3px solid rgba(255, 255, 255, 0.3);
+            border-radius: 50%;
+            border-top-color: #fff;
+            animation: spin 1s linear infinite;
+            margin: 0 auto 1rem;
+        }
+
+        @keyframes spin {
+            to { transform: rotate(360deg); }
+        }
+
+        .warning-text {
+            color: var(--warning);
+            font-size: 0.8rem;
+            display: block;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <header>
+            <h1>Extraction Center</h1>
+            <p class="subtitle">Intelligent PDF to JSON Pipeline for Japanese Export Certificates</p>
+        </header>
+
+        <section class="upload-card">
+            <form id="uploadForm">
+                <div class="drop-zone" id="dropZone">
+                    <span class="icon">📄</span>
+                    <p id="fileNameDisplay">Click or drag PDF file here</p>
+                    <p style="font-size: 0.85rem; color: var(--text-dim); margin-top: 0.5rem;">Maximum size 100MB</p>
+                    <input type="file" id="pdfFile" accept="application/pdf" required>
+                </div>
+                <button type="submit" class="btn" id="submitBtn">Extract Data</button>
+            </form>
+            <div id="statusContainer" style="margin-top: 2rem; display: none;">
+                <div class="loader" id="loader"></div>
+                <p id="status">Processing document...</p>
+            </div>
+        </section>
+
+        <section class="results-section" id="resultsSection">
+            <div class="summary-grid">
+                <div class="summary-item">
+                    <label>Total Pages</label>
+                    <span id="statTotal">-</span>
+                </div>
+                <div class="summary-item">
+                    <label>Success Rate</label>
+                    <span id="statRate">-</span>
+                </div>
+                <div class="summary-item">
+                    <label>Perfect Matches</label>
+                    <span id="statSuccess">-</span>
+                </div>
+            </div>
+
+            <!-- Debug Section -->
+            <div id="debugView" style="display: none; margin-bottom: 2rem; background: rgba(15, 23, 42, 0.5); padding: 1.5rem; border-radius: 16px; border: 1px solid var(--border);">
+                <label style="display: block; color: var(--text-dim); font-size: 0.7rem; text-transform: uppercase; margin-bottom: 1rem;">Calibration Debug (Page 1 Crops)</label>
+                <div style="display: flex; gap: 1rem; overflow-x: auto; padding-bottom: 1rem;">
+                    <div style="flex-shrink: 0;">
+                        <span style="display:block;font-size:0.6rem;color:var(--text-dim)">Chassis</span>
+                        <img id="debugChassis" style="height: 60px; border: 1px solid var(--border); border-radius: 4px;">
+                    </div>
+                    <div style="flex-shrink: 0;">
+                        <span style="display:block;font-size:0.6rem;color:var(--text-dim)">Issue Date</span>
+                        <img id="debugIssue" style="height: 60px; border: 1px solid var(--border); border-radius: 4px;">
+                    </div>
+                    <div style="flex-shrink: 0;">
+                        <span style="display:block;font-size:0.6rem;color:var(--text-dim)">Expiry Date</span>
+                        <img id="debugExpiry" style="height: 60px; border: 1px solid var(--border); border-radius: 4px;">
+                    </div>
+                </div>
+            </div>
+
+            <div class="table-container">
+                <table>
+                    <thead>
+                        <tr>
+                            <th>Page</th>
+                            <th>Chassis Number</th>
+                            <th>Issue Date</th>
+                            <th>Expiry Date</th>
+                            <th>Status</th>
+                        </tr>
+                    </thead>
+                    <tbody id="resultsTable">
+                        <!-- Results will be injected here -->
+                    </tbody>
+                </table>
+            </div>
+        </section>
+    </div>
+
+    <script>
+        const form = document.getElementById('uploadForm');
+        const fileInput = document.getElementById('pdfFile');
+        const dropZone = document.getElementById('dropZone');
+        const fileNameDisplay = document.getElementById('fileNameDisplay');
+        const statusContainer = document.getElementById('statusContainer');
+        const status = document.getElementById('status');
+        const loader = document.getElementById('loader');
+        const resultsSection = document.getElementById('resultsSection');
+        const resultsTable = document.getElementById('resultsTable');
+        const submitBtn = document.getElementById('submitBtn');
+
+        fileInput.addEventListener('change', () => {
+            if (fileInput.files.length > 0) {
+                fileNameDisplay.textContent = fileInput.files[0].name;
+                fileNameDisplay.style.color = 'var(--primary)';
+            }
+        });
+
+        form.addEventListener('submit', async (e) => {
+            e.preventDefault();
+            
+            const file = fileInput.files[0];
+            if (!file) return;
+
+            const formData = new FormData();
+            formData.append('file', file);
+
+            // Reset UI
+            statusContainer.style.display = 'block';
+            loader.style.display = 'block';
+            status.textContent = 'Uploading and processing...';
+            status.style.color = 'var(--text)';
+            resultsSection.style.display = 'none';
+            submitBtn.disabled = true;
+
+            try {
+                const response = await fetch('/v1/extract', {
+                    method: 'POST',
+                    body: formData
+                });
+
+                if (!response.ok) {
+                    const errData = await response.json();
+                    throw new Error(errData.detail || 'Extraction failed');
+                }
+
+                const data = await response.json();
+                displayResults(data);
+                
+                status.textContent = 'Extraction Complete!';
+                status.style.color = 'var(--success)';
+                loader.style.display = 'none';
+            } catch (err) {
+                status.textContent = `Error: ${err.message}`;
+                status.style.color = 'var(--danger)';
+                loader.style.display = 'none';
+            } finally {
+                submitBtn.disabled = false;
+            }
+        });
+
+        function displayResults(data) {
+            resultsSection.style.display = 'block';
+            
+            // Show debug images
+            const ts = Date.now();
+            document.getElementById('debugView').style.display = 'block';
+            document.getElementById('debugChassis').src = `/static/debug/crop_chassis.png?t=${ts}`;
+            document.getElementById('debugIssue').src = `/static/debug/crop_issue.png?t=${ts}`;
+            document.getElementById('debugExpiry').src = `/static/debug/crop_expiry.png?t=${ts}`;
+
+            // Stats
+            document.getElementById('statTotal').textContent = data.page_count;
+            document.getElementById('statRate').textContent = data.summary.success_rate;
+            document.getElementById('statSuccess').textContent = data.summary.fully_extracted;
+
+            // Table
+            resultsTable.innerHTML = '';
+            data.results.forEach(res => {
+                const tr = document.createElement('tr');
+                
+                const hasFailures = res.warnings.length > 0;
+                const isComplete = res.chassis_no && res.issue_date && res.expiry_date;
+                
+                let statusBadge = '';
+                if (isComplete && !hasFailures) {
+                    statusBadge = '<span class="badge badge-success">COMPLETE</span>';
+                } else if (isComplete) {
+                    statusBadge = '<span class="badge badge-warning">VALIDATED</span>';
+                } else if (res.chassis_no || res.issue_date || res.expiry_date) {
+                    statusBadge = '<span class="badge badge-warning">PARTIAL</span>';
+                } else {
+                    statusBadge = '<span class="badge badge-danger">FAILED</span>';
+                }
+
+                const warningsHtml = res.warnings.map(w => `<span class="warning-text">⚠️ ${w}</span>`).join('');
+
+                tr.innerHTML = `
+                    <td style="font-weight: 600;">${res.page}</td>
+                    <td>${res.chassis_no || '<span style="color:var(--danger)">-</span>'}</td>
+                    <td>${res.issue_date || '<span style="color:var(--danger)">-</span>'}</td>
+                    <td>${res.expiry_date || '<span style="color:var(--danger)">-</span>'}</td>
+                    <td>
+                        ${statusBadge}
+                        ${warningsHtml}
+                    </td>
+                `;
+                resultsTable.appendChild(tr);
+            });
+
+            // Smooth scroll to results
+            resultsSection.scrollIntoView({ behavior: 'smooth', block: 'start' });
+        }
+    </script>
+</body>
+</html>
