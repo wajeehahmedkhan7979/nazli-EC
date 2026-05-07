@@ -1,21 +1,19 @@
 """
-EC PDF Extractor — Surgical ROI with PaddleOCR.
+EC PDF Extractor — Calibrated for Landscape Export Certificates.
 
-These dimensions were manually verified by the user:
-  Chassis:     (434, 61)   to (600, 81)
-  Expiry Date: (182, 300) to (350, 315)
-  Issue Date:  (160, 450) to (273, 470)
+Coordinate System:
+  - All ROI coordinates are in PDF Points (1 pt = 1/72 inch).
+  - A4 Landscape = 842 × 595 points.
+  - At 300 DPI rendering: scale = 300/72 = 4.1667x → 3508 × 2479 pixels.
+  - The _extract_page() function dynamically computes scale from page.rect.
 
-The system renders at 300 DPI, crops these regions, cleans them, and runs PaddleOCR.
+OCR Engine:
+  - Primary: Tesseract 5.x (stable, local, no GPU required)
+  - The PaddlePaddle 3.3.1 detection model has a known PIR crash
+    (ConvertPirAttribute2RuntimeAttribute) that is unfixable without
+    rebuilding the paddle wheel.
 """
 from __future__ import annotations
-
-import os
-# Disable unstable Paddle PIR compiler and oneDNN to fix crash on some systems
-os.environ["PADDLE_PIR_ENABLE"] = "0"
-os.environ["FLAGS_enable_pir_api"] = "0"
-os.environ["FLAGS_use_onednn"] = "0"
-os.environ["PROTOCOL_BUFFERS_PYTHON_IMPLEMENTATION"] = "python"
 
 import logging
 import re
@@ -23,11 +21,10 @@ import time
 import unicodedata
 import functools
 from dataclasses import dataclass, field
-from datetime import date
 from pathlib import Path
 from typing import Optional
 
-import fitz
+import fitz  # PyMuPDF
 import numpy as np
 import cv2
 from PIL import Image
@@ -36,20 +33,45 @@ logger = logging.getLogger(__name__)
 
 RENDER_DPI = 300
 
-# Latest calibrated Point coordinates for Landscape A4 (842x595)
+# ---------------------------------------------------------------------------
+# CALIBRATED COORDINATES (PDF Points, 72 DPI)
+# ---------------------------------------------------------------------------
+# Based on user-annotated visual evidence for Landscape A4 (842×595 points).
+#
+# Chassis No:  Row 1, rightmost column ("車台番号 / Maker's serial number")
+#              e.g. "NKE165-7242932"
+#              Position: ~70-99% width, ~7-14% height
+#
+# Expiry Date: "輸出予定日" row ("Export scheduled day")
+#              e.g. "令和8年 8月 6日 / 2026 year 8 month 6 day"
+#              Position: ~21-51% width, ~58-64% height
+#
+# Issue Date:  Official stamp at bottom (Director-General date)
+#              e.g. "2026 year 4 month 9 day"
+#              Position: ~29-58% width, ~91-95% height
+# ---------------------------------------------------------------------------
 ROIS = {
-    "chassis_no":  {"x1": 435, "y1": 185, "x2": 650, "y2": 215},
-    "expiry_date": {"x1": 165, "y1": 60,  "x2": 380, "y2": 95},
-    "issue_date":  {"x1": 110, "y1": 535, "x2": 320, "y2": 565},
+    # Chassis No: Under "Maker's serial number"
+    "chassis_no":  {"x1": 510, "y1": 70, "x2": 750, "y2": 100},
+    
+    # Expiry Date: "Export scheduled day" row
+    "expiry_date": {"x1": 210, "y1": 350, "x2": 400, "y2": 380},
+    
+    # Issue Date: Official stamp at bottom, left of "Director-General"
+    "issue_date":  {"x1": 180, "y1": 535, "x2": 325, "y2": 575},
 }
 
+
+# ---------------------------------------------------------------------------
+# Data Classes
+# ---------------------------------------------------------------------------
 
 @dataclass
 class PageResult:
     page_number: int
-    chassis_no:  Optional[str]
-    issue_date:  Optional[str]
-    expiry_date: Optional[str]
+    chassis_no:  Optional[str] = None
+    issue_date:  Optional[str] = None
+    expiry_date: Optional[str] = None
     warnings:    list[str] = field(default_factory=list)
     raw_text:    str = field(default="", repr=False)
     elapsed_ms:  float = 0.0
@@ -81,56 +103,40 @@ class ExtractionResult:
 
 
 # ---------------------------------------------------------------------------
-# OCR Engine (Lazy Loaded PaddleOCR)
+# OCR Engine — Tesseract (primary, stable)
 # ---------------------------------------------------------------------------
 
-@functools.lru_cache(maxsize=1)
-def get_ocr():
-    """Initialises PaddleOCR only once."""
-    try:
-        from paddleocr import PaddleOCR
-        # Using English and Japanese for mixed EC documents
-        # Using mobile model + disabling MKLDNN to kill OneDNN errors
-        return PaddleOCR(
-            lang="en", 
-            enable_mkldnn=False
+def _run_ocr(img: Image.Image, mode: str = "line") -> str:
+    """
+    Run Tesseract OCR on a preprocessed PIL Image.
+
+    Args:
+        img:  A preprocessed (binarized) PIL Image.
+        mode: "chassis" for single-line alphanumeric,
+              "date" for block-mode date extraction,
+              "line" for generic single-line.
+    """
+    import pytesseract
+
+    if mode == "chassis":
+        # Single text line, alphanumeric + hyphen only
+        config = (
+            "--oem 1 --psm 7 -l eng "
+            "-c tessedit_char_whitelist="
+            "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789-"
         )
-    except ImportError:
-        logger.error("PaddleOCR not installed. Falling back to dummy.")
-        return None
+    elif mode == "date":
+        # Uniform block — expect digits, Japanese era markers, spaces
+        config = "--oem 1 --psm 6 -l eng"
+    else:
+        config = "--oem 1 --psm 7 -l eng"
 
-
-def _run_ocr(img: Image.Image) -> str:
-    """Runs PaddleOCR on a PIL Image and returns joined text lines."""
-    ocr = get_ocr()
-    if not ocr:
-        return ""
-    
-    # Convert PIL to BGR for Paddle
-    arr = cv2.cvtColor(np.array(img), cv2.COLOR_RGB2BGR)
-    
     try:
-        try:
-            # Attempt recognition-only mode (det=False)
-            result = ocr.ocr(arr, det=False, cls=True)
-        except (TypeError, ValueError):
-            # Fallback for older/different PaddleOCR versions that don't support 'det' in .ocr()
-            logger.warning("PaddleOCR does not support 'det' argument, falling back to full mode.")
-            result = ocr.ocr(arr)
-
-        if not result or not result[0] or not result[0][0]:
-            return ""
-        
-        # Handle different return formats (det=False vs full mode)
-        if isinstance(result[0][0], (list, tuple)):
-            # With det=False: [[('text', confidence)]]
-            return str(result[0][0][0])
-        else:
-            # Full mode: [[ [box, [text, conf]], ... ]]
-            return " ".join([line[1][0] for line in result[0]])
+        text = pytesseract.image_to_string(img, config=config).strip()
+        return text
     except Exception as exc:
-        logger.error("PaddleOCR error: %s", exc)
-        return ""
+        logger.error("Tesseract OCR error: %s", exc)
+        return f"[OCR_ERROR: {exc}]"
 
 
 # ---------------------------------------------------------------------------
@@ -145,10 +151,11 @@ def _crop(img: Image.Image, roi: dict) -> Image.Image:
 def _preprocess(img: Image.Image) -> Image.Image:
     """Cleans the small ROI crop for better OCR."""
     arr = np.array(img.convert("L"))
-    # Upscale slightly for small text
+    # Upscale 2x for small text recognition
     arr = cv2.resize(arr, None, fx=2, fy=2, interpolation=cv2.INTER_CUBIC)
-    # Denoise and threshold
+    # Light denoise
     arr = cv2.medianBlur(arr, 3)
+    # Otsu binarization
     _, binary = cv2.threshold(arr, 0, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU)
     return Image.fromarray(binary)
 
@@ -158,94 +165,99 @@ def _preprocess(img: Image.Image) -> Image.Image:
 # ---------------------------------------------------------------------------
 
 def _parse_chassis(text: str) -> Optional[str]:
-    """Cleans and validates chassis number."""
+    """Extract chassis number pattern: LETTERS-DIGITS (e.g. NKE165-7242932)."""
     text = unicodedata.normalize("NFKC", text).upper().replace(" ", "")
-    # Expecting: [PREFIX]-[SUFFIX] e.g. NKE165-7242861
-    m = re.search(r"([A-Z0-9]+)-([0-9]{5,10})", text)
+    m = re.search(r"([A-Z0-9]{2,10})-(\d{5,10})", text)
     if m:
         return f"{m.group(1)}-{m.group(2)}"
-    return None
+    # Fallback: return cleaned text if it has enough alphanumeric chars
+    cleaned = re.sub(r"[^A-Z0-9\-]", "", text)
+    return cleaned if len(cleaned) >= 6 else None
 
 
 def _parse_date(text: str) -> Optional[str]:
-    """Parses date from OCR string (expects YYYY MM DD)."""
+    """
+    Extract date from OCR text.
+    Handles formats like:
+      - "2026 year 8 month 6 day"
+      - "2026 8 6"
+      - "令和 8 年 8 月 6 日"
+    Returns: "YYYY-MM-DD" string or None.
+    """
     nums = re.findall(r"\d+", text)
-    if len(nums) < 3:
-        # Fallback for YYYY MM (if day missing)
-        if len(nums) == 2 and 2000 <= int(nums[0]) <= 2100:
-             return f"{nums[0]}-{int(nums[1]):02d}-01"
-        return None
-    
-    y = int(nums[0])
-    m = int(nums[1])
-    d = int(nums[2])
-    
-    # Simple fix for common OCR digit errors in years
-    if 9000 <= y <= 9999: y = 2000 + (y % 100)
-    
-    if not (2000 <= y <= 2100): return None
-    if not (1 <= m <= 12):      return None
-    if not (1 <= d <= 31):      d = 1 # clamp
-    
+    if len(nums) >= 3:
+        year, month, day = int(nums[0]), int(nums[1]), int(nums[2])
+        # Handle Japanese era (Reiwa): small year number
+        if year < 100:
+            year += 2018  # Reiwa era offset
+        # Basic sanity check
+        if 2020 <= year <= 2030 and 1 <= month <= 12 and 1 <= day <= 31:
+            return f"{year}-{month:02d}-{day:02d}"
+    return None
+
+
+# ---------------------------------------------------------------------------
+# Debug helpers
+# ---------------------------------------------------------------------------
+
+def _save_crop_debug(name: str, img: Image.Image) -> None:
+    """Save debug crop with naming compatible with the static UI."""
     try:
-        return date(y, m, d).isoformat()
-    except ValueError:
-        return None
+        d = Path("static/debug")
+        d.mkdir(parents=True, exist_ok=True)
+        img.save(d / f"crop_{name}.png")
+    except Exception:
+        pass
 
 
 # ---------------------------------------------------------------------------
-# Compatibility Exports for probe_rois.py
-# ---------------------------------------------------------------------------
-
-def _ocr_chassis(img: Image.Image) -> str: return _run_ocr(img)
-def _ocr_date(img: Image.Image) -> str:    return _run_ocr(img)
-
-
-# ---------------------------------------------------------------------------
-# Page extraction
+# Page Extraction
 # ---------------------------------------------------------------------------
 
 def _extract_page(page: fitz.Page, page_number: int) -> PageResult:
     t0 = time.monotonic()
 
-    # 1. Render full page in memory
+    # 1. Render full page at high DPI
     mat = fitz.Matrix(RENDER_DPI / 72, RENDER_DPI / 72)
     pix = page.get_pixmap(matrix=mat, alpha=False)
     full_img = Image.frombytes("RGB", [pix.width, pix.height], pix.samples)
 
-    # 2. Extract Fields via Surgical ROI
-    # Use dynamic page size (points) as reference for scaling
+    # 2. Dynamic scale from page's actual bounding box (handles non-standard PDFs)
     ref_w = page.rect.width
     ref_h = page.rect.height
-    
     W, H = full_img.size
     scale_x = W / ref_w
     scale_y = H / ref_h
 
+    # 3. Extract each field via surgical ROI
     results = {}
     raw_texts = []
-    
+
     for field_name, roi in ROIS.items():
-        # Scale Points to Pixels
+        # Scale PDF Points → rendered Pixels
         px_roi = {
-            "x1": int(roi["x1"] * scale_x),
-            "y1": int(roi["y1"] * scale_y),
-            "x2": int(roi["x2"] * scale_x),
-            "y2": int(roi["y2"] * scale_y),
+            "x1": max(0, int(roi["x1"] * scale_x)),
+            "y1": max(0, int(roi["y1"] * scale_y)),
+            "x2": min(W, int(roi["x2"] * scale_x)),
+            "y2": min(H, int(roi["y2"] * scale_y)),
         }
-        
-        # Crop and Preprocess
+
         cropped = _crop(full_img, px_roi)
         processed = _preprocess(cropped)
-        
-        # Save debug crops for Page 1
+
+        # Save debug crops for page 1
         if page_number == 1:
-            _save_crop_debug(field_name, processed)
-        
-        # OCR
-        raw = _run_ocr(processed)
+            short_name = field_name.replace("_no", "").replace("_date", "")
+            _save_crop_debug(short_name, processed)
+
+        # OCR with field-specific mode
+        if field_name == "chassis_no":
+            raw = _run_ocr(processed, mode="chassis")
+        else:
+            raw = _run_ocr(processed, mode="date")
+
         raw_texts.append(f"{field_name}: {raw}")
-        
+
         # Parse
         if field_name == "chassis_no":
             results[field_name] = _parse_chassis(raw)
@@ -273,17 +285,8 @@ def _extract_page(page: fitz.Page, page_number: int) -> PageResult:
     )
 
 
-def _save_crop_debug(name: str, img: Image.Image) -> None:
-    try:
-        d = Path("static/debug")
-        d.mkdir(parents=True, exist_ok=True)
-        img.save(d / f"crop_{name}.png")
-    except Exception:
-        pass
-
-
 # ---------------------------------------------------------------------------
-# Document entry point
+# Document Entry Point
 # ---------------------------------------------------------------------------
 
 def extract_pdf(pdf_path: str | Path) -> ExtractionResult:
@@ -292,7 +295,7 @@ def extract_pdf(pdf_path: str | Path) -> ExtractionResult:
 
     with fitz.open(str(path)) as doc:
         page_count = len(doc)
-        logger.info("Extracting %d pages from %s using ROI-PaddleOCR", page_count, path.name)
+        logger.info("Extracting %d pages from %s", page_count, path.name)
 
         for idx, page in enumerate(doc):
             pn = idx + 1
@@ -312,4 +315,19 @@ def extract_pdf(pdf_path: str | Path) -> ExtractionResult:
                 result.expiry_date, result.warnings, result.elapsed_ms,
             )
 
-    return ExtractionResult(file_name=path.name, page_count=page_count, results=results)
+    return ExtractionResult(
+        file_name=path.name,
+        page_count=page_count,
+        results=results,
+    )
+
+
+# ---------------------------------------------------------------------------
+# Compatibility Exports for probe_rois.py
+# ---------------------------------------------------------------------------
+
+def _ocr_chassis(img: Image.Image) -> str:
+    return _run_ocr(img, mode="chassis")
+
+def _ocr_date(img: Image.Image) -> str:
+    return _run_ocr(img, mode="date")

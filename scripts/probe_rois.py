@@ -5,25 +5,23 @@ Usage:
     python scripts/probe_rois.py path/to/file.pdf [page_number]
 
 Saves a debug image with the current ROI boxes drawn on it, and prints
-the fractional coordinates. Adjust ROIS in src/extractor.py to match.
+the OCR results. Adjust ROIS in src/extractor.py to match.
 """
 from __future__ import annotations
-
-import os
-# FORCE these before any other import
-os.environ['FLAGS_enable_pir_api'] = '0'
-os.environ['FLAGS_use_onednn'] = '0'
-os.environ['PROTOCOL_BUFFERS_PYTHON_IMPLEMENTATION'] = 'python'
 
 import sys
 from pathlib import Path
 
 import fitz
-from PIL import Image, ImageDraw, ImageFont
+from PIL import Image, ImageDraw
 
 # Add parent dir to path
 sys.path.insert(0, str(Path(__file__).parent.parent))
-from src.extractor import ROIS, RENDER_DPI, _preprocess, _crop, _ocr_chassis, _ocr_date, _parse_chassis, _parse_date
+from src.extractor import (
+    ROIS, RENDER_DPI,
+    _preprocess, _run_ocr,
+    _parse_chassis, _parse_date,
+)
 
 
 COLOURS = {
@@ -37,48 +35,51 @@ def probe(pdf_path: str, page_num: int = 1):
     path = Path(pdf_path)
     with fitz.open(str(path)) as doc:
         page = doc[page_num - 1]
-        
-        # --- DYNAMIC REFERENCE FIX ---
-        rect = page.rect 
-        current_ref_w = rect.width
-        current_ref_h = rect.height
-        # -----------------------------
+
+        # Dynamic reference from the actual page bounding box
+        rect = page.rect
+        ref_w = rect.width
+        ref_h = rect.height
 
         mat = fitz.Matrix(RENDER_DPI / 72, RENDER_DPI / 72)
         pix = page.get_pixmap(matrix=mat, alpha=False)
         img = Image.frombytes("RGB", [pix.width, pix.height], pix.samples)
 
     W, H = img.size
-    scale_x = W / current_ref_w
-    scale_y = H / current_ref_h
+    scale_x = W / ref_w
+    scale_y = H / ref_h
     draw = ImageDraw.Draw(img)
 
     print(f"\nPage {page_num} — {W}×{H} px at {RENDER_DPI} DPI")
+    print(f"PDF Points: {ref_w:.1f}×{ref_h:.1f}")
+    print(f"Scale: x={scale_x:.4f}, y={scale_y:.4f}")
     print("-" * 60)
 
-    for field, roi in ROIS.items():
+    for field_name, roi in ROIS.items():
         # Scale Points to Pixels
-        x1 = int(roi["x1"] * scale_x)
-        y1 = int(roi["y1"] * scale_y)
-        x2 = int(roi["x2"] * scale_x)
-        y2 = int(roi["y2"] * scale_y)
-        
-        draw.rectangle([x1, y1, x2, y2], outline=COLOURS[field], width=6)
-        draw.text((x1 + 6, y1 + 6), field, fill=COLOURS[field])
+        x1 = max(0, int(roi["x1"] * scale_x))
+        y1 = max(0, int(roi["y1"] * scale_y))
+        x2 = min(W, int(roi["x2"] * scale_x))
+        y2 = min(H, int(roi["y2"] * scale_y))
 
-        # Use the scaled coordinates for the crop too
-        px_roi = {"x1": x1, "y1": y1, "x2": x2, "y2": y2}
-        crop = _preprocess(_crop(img.convert("RGB"), px_roi))
-        crop.save(f"debug_crop_{field}.png")
+        colour = COLOURS.get(field_name, "yellow")
+        draw.rectangle([x1, y1, x2, y2], outline=colour, width=6)
+        draw.text((x1 + 6, y1 + 6), field_name, fill=colour)
 
-        if field == "chassis_no":
-            raw = _ocr_chassis(crop)
+        # Crop, preprocess, OCR
+        crop = img.crop((x1, y1, x2, y2))
+        processed = _preprocess(crop)
+        processed.save(f"debug_crop_{field_name}.png")
+
+        if field_name == "chassis_no":
+            raw = _run_ocr(processed, mode="chassis")
             parsed = _parse_chassis(raw)
         else:
-            raw = _ocr_date(crop)
+            raw = _run_ocr(processed, mode="date")
             parsed = _parse_date(raw)
 
-        print(f"  [{field}]")
+        print(f"  [{field_name}]")
+        print(f"    ROI (pts): ({roi['x1']},{roi['y1']}) → ({roi['x2']},{roi['y2']})")
         print(f"    ROI (px) : ({x1},{y1}) → ({x2},{y2})")
         print(f"    OCR raw  : {repr(raw[:120])}")
         print(f"    Parsed   : {parsed}")
