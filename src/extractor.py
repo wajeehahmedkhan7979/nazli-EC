@@ -51,13 +51,13 @@ RENDER_DPI = 300
 #              Position: ~29-58% width, ~91-95% height
 # ---------------------------------------------------------------------------
 ROIS = {
-    # Chassis No: Under "Maker's serial number"
-    "chassis_no":  {"x1": 510, "y1": 70, "x2": 750, "y2": 100},
+    # Chassis No: Tightened x2 to 740 to avoid trailing noise
+    "chassis_no":  {"x1": 510, "y1": 70, "x2": 740, "y2": 100},
     
-    # Expiry Date: "Export scheduled day" row
-    "expiry_date": {"x1": 210, "y1": 350, "x2": 400, "y2": 380},
+    # Expiry Date: Nudged y1 down to 355 to avoid header text
+    "expiry_date": {"x1": 210, "y1": 355, "x2": 400, "y2": 385},
     
-    # Issue Date: Official stamp at bottom, left of "Director-General"
+    # Issue Date: Centered on the bottom stamp
     "issue_date":  {"x1": 180, "y1": 535, "x2": 325, "y2": 575},
 }
 
@@ -186,13 +186,24 @@ def _parse_date(text: str) -> Optional[str]:
     """
     nums = re.findall(r"\d+", text)
     if len(nums) >= 3:
-        year, month, day = int(nums[0]), int(nums[1]), int(nums[2])
-        # Handle Japanese era (Reiwa): small year number
-        if year < 100:
-            year += 2018  # Reiwa era offset
-        # Basic sanity check
-        if 2020 <= year <= 2030 and 1 <= month <= 12 and 1 <= day <= 31:
-            return f"{year}-{month:02d}-{day:02d}"
+        try:
+            year, month, day = int(nums[0]), int(nums[1]), int(nums[2])
+            
+            # Handle common Tesseract misreads (e.g. 2 misread as 9)
+            if year > 9000:
+                year -= 7000
+            elif year > 8000: # Misread 2 as 8
+                year -= 6000
+                
+            # Handle Japanese era (Reiwa): small year number
+            if year < 100:
+                year += 2018
+            
+            # Basic sanity check
+            if 2020 <= year <= 2030 and 1 <= month <= 12 and 1 <= day <= 31:
+                return f"{year}-{month:02d}-{day:02d}"
+        except (ValueError, IndexError):
+            pass
     return None
 
 

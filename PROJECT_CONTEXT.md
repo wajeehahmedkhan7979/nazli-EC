@@ -16,37 +16,37 @@ The goal of this project is to build a production-grade, deterministic extractio
 - Calibrated the system for A4 Landscape documents (842x595 PDF points).
 
 ### 2. The "Coordinate Confusion" Phase
-- **Issue:** Using pixel coordinates from external tools (`roi_picker`) caused boxes to be drawn off-screen because the script expects native PDF points (1/72 inch).
-- **Fix:** All coordinates in `ROIS` were converted back to native PDF points. The script handles the scaling to high-resolution pixels (300 DPI) internally.
+- **Issue:** Using pixel coordinates from screenshots/external tools caused systemic drift.
+- **Fix:** Switched to **Native PDF Points (1/72")**. By defining ROIs in the 842x595 point space, the script now "snaps" to the correct locations regardless of the render resolution (DPI).
 
-### 3. PaddleOCR Stability War
-This has been the main pain point. The environment (Linux on ARM/WSL/Standard) has specific incompatibilities with the latest Paddle features.
-- **PIR Compiler Error:** `NotImplementedError: ConvertPirAttribute2RuntimeAttribute` occurred when using the default detection models.
-- **The "Surgical Fix":** We disabled the **Detection** stage (`det=False`) and the **Angle Classifier** (`cls=False`). Since we are already cropping the ROI, we only need the **Recognition** model.
-- **Argument Errors:** Different versions of `PaddleOCR` on the system have inconsistent argument support. We've had to iteratively remove `show_log`, `det`, `rec`, and `use_gpu` from various calls to find the "safe" subset.
+### 3. PaddleOCR Stability War (Final Resolution)
+- **Problem:** Frequent `TypeError` and `ValueError` crashes due to "unexpected keyword arguments" (`det`, `cls`, `show_log`) across different PaddleOCR wrapper versions.
+- **The "Bulletproof" Solution:** Refactored `_run_ocr` to use the most basic call `ocr.ocr(arr)` with a defensive result parser. 
+- **Environment Flags:** Fixed C++/OneDNN runtime crashes using:
+  `FLAGS_enable_pir_api=0 FLAGS_use_onednn=0`
 
-### 4. Visual Calibration
-- The user provided manual annotations on a screenshot of `EC4.30.pdf`.
-- **Chassis No:** Top-right area.
-- **Expiry Date:** Middle-bottom (Validity Period).
-- **Issue Date:** Bottom-left (Application Date).
-- Coordinates have been refined to:
-  - Chassis: `{"x1": 590, "y1": 95, "x2": 820, "y2": 145}`
-  - Expiry: `{"x1": 210, "y1": 445, "x2": 465, "y2": 505}`
-  - Issue: `{"x1": 40, "y1": 515, "x2": 340, "y2": 575}`
+### 4. Visual Arrow Calibration (Final Mapping)
+Based on direct visual feedback and "Visual Arrow" annotations, we identified that the target fields live in different "elevations" than initially thought:
+- **Chassis No (Red):** Top-right row.
+- **Expiry Date (Green):** Middle row (Export Scheduled Day).
+- **Issue Date (Blue):** Bottom-left stamp, narrowly cropped to avoid QR codes.
 
-## Current Status (as of 2026-05-07)
-- **Script:** `scripts/probe_rois.py` is the source of truth for verification.
-- **Output:** Saves `probe_page1.png` and individual crops in `static/debug/`.
-- **Last Error:** `ValueError: Unknown argument: use_gpu` during `PaddleOCR` initialization.
+#### Final Calibrated Coordinates (842x595 Points):
+- **Chassis:** `{"x1": 420, "y1": 180, "x2": 660, "y2": 225}`
+- **Expiry:** `{"x1": 60, "y1": 435, "x2": 450, "y2": 485}`
+- **Issue:** `{"x1": 80, "y1": 530, "x2": 320, "y2": 580}`
+
+## Current Status (as of 2026-05-08)
+- **Stable:** `src/extractor.py` has a hardened `_run_ocr` and `_preprocess` pipeline.
+- **Verified:** Calibration is confirmed via `scripts/probe_rois.py`.
+- **DPI:** Standardized at `300 DPI` for OCR quality.
 
 ## Main Pain Points & Gotchas
-1. **Scanned PDFs:** The target PDFs are scanned images. `page.get_text()` returns nothing; OCR is mandatory.
-2. **Environment Sensitivity:** Paddle environment variables (FLAGS) are critical to prevent crashes.
-3. **Coordinate Scaling:** Always work in 72 DPI "Points" for ROIs. Let the script scale them by `(Target_DPI / 72)`.
-4. **Paddle versioning:** The installed version of `paddleocr` seems to be a wrapper around `paddlex` which has a different API signature than standard `paddleocr`.
+1. **API Drift:** PaddleOCR's Python wrapper is extremely volatile. Never rely on non-essential arguments like `det=False` or `show_log=False` as they break across minor version updates.
+2. **Scaling Logic:** Always render at `fitz.Matrix(DPI / 72, DPI / 72)` to ensure ROI points match pixel locations perfectly.
+3. **QR Interference:** Keep the Issue Date ROI narrow; modern ECs have QR codes in the bottom-left corner that can confuse OCR if included in the crop.
 
 ## Future Work
-- Hardening the `get_ocr()` initialization for the specific environment.
-- Finalizing the parsing logic for dates and chassis numbers to handle OCR noise.
-- Scaling the pipeline to handle multi-page documents and batches.
+- Integrate the verified ROIs into the main ERP processing loop.
+- Implement post-processing regex to clean common OCR substitutions (e.g., '0' for 'O', '1' for 'I').
+- Add human-in-the-loop triggers for low-confidence Chassis extractions.
